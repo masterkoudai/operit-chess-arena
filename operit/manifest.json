@@ -1,0 +1,18 @@
+{
+  "id": "operit.chess.arena",
+  "name": "Operit 棋院",
+  "version": "1.0.0",
+  "author": "your-name",
+  "description": "在 Operit 内与 AI 对弈的棋类插件：五子棋 / 中国象棋 / 国际象棋 / 围棋。含教学模式、AI 对手与实时聊天解说。",
+  "homepage": "https://github.com/your-name/operit-chess-arena",
+  "category": "Game",
+  "type": "toolpkg",
+  "main": "main.js",
+  "minOperit": "1.7.0",
+  "tools": [
+    { "name": "chess_arena_open", "description": { "zh": "打开棋院（在 Operit 内置浏览器加载棋类对弈应用）", "en": "Open the chess arena web app" }, "parameters": [] },
+    { "name": "chess_arena_ask", "description": { "zh": "把当前棋局局面与用户问题交给 Operit 的 AI 解说", "en": "Ask Operit AI to comment on the current board" }, "parameters": [ { "name": "question", "type": "string", "required": true, "description": { "zh": "用户的问题", "en": "user question" } }, { "name": "board", "type": "string", "required": true, "description": { "zh": "当前局面文本/坐标", "en": "board state text" } } ] }
+  ],
+  "ui": { "entry": "web", "url": "index.html" },
+  "notes": "本包为静态 Web 应用。推荐用法：在 Operit 内置浏览器打开仓库首页（GitHub Pages）即可获得完整体验；也可作为 ToolPkg 导入以注册工具入口。应用内置 Operit 宿主桥，能自动把棋盘状态交给 Operit 的 AI 进行解说与执子。"
+}

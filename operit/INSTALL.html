@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>在 Operit 中安装 · 棋院</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<div class="topbar"><div class="logo">Operit <span>棋院</span></div><a class="btn ghost" href="../index.html">← 大厅</a></div>
+<div class="wrap" style="max-width:760px">
+  <h1>在 Operit 中安装「棋院」</h1>
+  <div class="panel">
+    <h3>方式一（推荐）：Operit 内置浏览器打开</h3>
+    <p>本仓库开启 GitHub Pages 后，把首页地址（如 <span class="kbd">https://your-name.github.io/operit-chess-arena/</span>）在 Operit 内置浏览器中打开即可。应用会自动接入 Operit 的 AI，聊天面板能「看棋盘说话」。</p>
+  </div>
+  <div class="panel">
+    <h3>方式二：作为 ToolPkg 导入</h3>
+    <p>进入 Operit 市场/工具箱 → 导入本地包，选择本仓库 <span class="kbd">operit/</span> 目录。导入后出现工具 <b>chess_arena_open</b> 与 <b>chess_arena_ask</b>。</p>
+  </div>
+  <div class="panel">
+    <h3>接 AI 的要点</h3>
+    <ol class="muted">
+      <li>棋类页右侧「聊天」随时问 AI，它看得到当前局面。</li>
+      <li>「设置」填 OpenAI 兼容 Base URL / Key / Model（Operit 内可复用已配模型）。</li>
+      <li>勾「大模型执子」：AI 亲自下并解说；不勾则由内置启发式 AI 对弈。</li>
+    </ol>
+  </div>
+  <p class="muted">详细见 <a href="INSTALL.md">INSTALL.md</a>。仓库：<a href="https://github.com/your-name/operit-chess-arena">operit-chess-arena</a></p>
+</div>
+</body>
+</html>

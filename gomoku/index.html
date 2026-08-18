@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>五子棋 · Operit 棋院</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">Operit <span>棋院</span></div>
+  <a class="btn ghost" href="../index.html">← 大厅</a>
+  <div class="spacer"></div>
+  <span class="tag" id="statusTag">五子棋</span>
+</div>
+
+<div class="wrap">
+  <div class="grid2">
+    <div class="panel">
+      <div class="boardbox" id="boardbox">
+        <canvas id="board" width="560" height="560"></canvas>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="newGame">新局</button>
+        <button class="btn" id="hintBtn">提示</button>
+        <button class="btn" id="undoBtn">悔棋</button>
+        <span class="status" id="status" style="margin-left:auto"></span>
+      </div>
+      <div class="evalbar" style="margin-top:12px"><div class="mark" id="evalMark" style="left:50%"></div></div>
+      <div class="muted" style="font-size:12px;margin-top:4px" id="evalText">局势均衡</div>
+    </div>
+
+    <div>
+      <div class="tabs">
+        <div class="tab active" data-tab="ctrl">控制</div>
+        <div class="tab" data-tab="chat">聊天</div>
+        <div class="tab" data-tab="set">设置</div>
+      </div>
+      <div class="panel" id="tab-ctrl">
+        <div class="row" style="margin-bottom:10px">
+          <span class="muted">模式</span>
+          <select id="mode"><option value="ai">人机对战</option><option value="pvp">双人对战</option></select>
+          <span class="muted">难度</span>
+          <select id="diff"><option value="easy">简单</option><option value="medium" selected>中等</option><option value="hard">困难</option></select>
+        </div>
+        <div class="row" style="margin-bottom:10px">
+          <span class="muted">你执</span>
+          <select id="side"><option value="1">黑(先)</option><option value="2">白(后)</option></select>
+        </div>
+        <div class="row" style="margin-bottom:12px">
+          <label class="row" style="gap:6px"><input type="checkbox" id="llmPlay"> 大模型执子（用已配置 AI 当对手）</label>
+        </div>
+        <div class="panel" style="background:var(--panel-2)">
+          <h3>着法</h3>
+          <div class="moves" id="moves"></div>
+        </div>
+        <p class="muted" style="font-size:12px;margin-bottom:0">黑棋禁手：长连、双四、双活三（实时红标）。点「提示」看建议落点与原因。</p>
+      </div>
+      <div class="panel hidden" id="tab-chat"><div id="chatMount"></div></div>
+      <div class="panel hidden" id="tab-set"><div id="setMount"></div></div>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/common.js"></script>
+<script src="engine.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>
