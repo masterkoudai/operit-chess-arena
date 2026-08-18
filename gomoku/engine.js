@@ -206,10 +206,26 @@
       }
       return null;
     }
-    contextText() {
-      const last = this.last ? `最近一手：${this.last.c === BLACK ? "黑" : "白"} (${ChessArena.coord.toAlpha(this.last.x)}${ChessArena.coord.num(this.last.y, SIZE)})` : "尚未落子";
-      return `五子棋 15×15，轮到${this.turn === BLACK ? "黑" : "白"}。${last}。共 ${this.history.length} 手。`;
+    /* ---- 紧凑局面（省 token）：手数 + 轮次 + 最近 6 手 + 威胁摘要 ----
+     * 不发整盘 225 格，只发着法序列——同等信息量下 token 约为 dump 的 1/4。 */
+    brief() {
+      const cd = (p) => String.fromCharCode(97 + p.x) + (SIZE - p.y);
+      const recent = this.history.slice(-6).map((p) => (p.c === BLACK ? "黑" : "白") + cd(p)).join(" ");
+      const opp = this.turn === BLACK ? WHITE : BLACK;
+      let mine = 0, his = 0;
+      for (const [x, y] of this.candidates(1)) {
+        if (this.pointScore(x, y, this.turn) >= 5000) mine++;
+        if (this.pointScore(x, y, opp) >= 5000) his++;
+      }
+      const th = (mine || his) ? ` 强点:我${mine}/对${his}` : "";
+      return `五子棋15路 第${this.history.length}手 轮:${this.turn === BLACK ? "黑" : "白"} 近手:${recent || "空盘"}${th}`;
     }
+    /* 完整盘面：只在「大模型执子」时使用 */
+    full() {
+      const rows = this.board.map((r) => r.map((v) => ".XO"[v]).join("")).join("/");
+      return this.brief() + "\n盘面(X黑 O白 .空, 上→下共15行, 行内左→右):\n" + rows;
+    }
+    contextText() { return this.brief(); }
   }
 
   global.Gomoku = Gomoku;

@@ -3,62 +3,86 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>围棋 · Operit 棋院</title>
+<title>围棋 · 陪你下一局</title>
 <link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/theme.js"></script>
 </head>
 <body>
 <div class="topbar">
+  <span class="seal">棋</span>
   <div class="logo">Operit <span>棋院</span></div>
-  <a class="btn ghost" href="../index.html">← 大厅</a>
+  <a class="btn ghost sm" href="../index.html">← 回大厅</a>
   <div class="spacer"></div>
-  <span class="tag" id="statusTag">围棋</span>
+  <button class="btn ghost sm" id="themeBtn"></button>
+  <span class="tag">围棋</span>
 </div>
 
 <div class="wrap">
   <div class="grid2">
     <div class="panel">
       <div class="boardbox" id="boardbox">
-        <canvas id="board" width="516" height="516"></canvas>
+        <canvas id="board"></canvas>
       </div>
-      <div class="row" style="margin-top:12px">
+      <div class="row" style="margin-top:13px">
         <button class="btn primary" id="newGame">新局</button>
         <button class="btn" id="hintBtn">提示</button>
         <button class="btn" id="passBtn">停一手</button>
         <button class="btn" id="undoBtn">悔棋</button>
         <button class="btn ghost" id="resignBtn">认输</button>
-        <span class="status" id="status" style="margin-left:auto"></span>
       </div>
-      <div class="muted" id="capText" style="font-size:13px;margin-top:6px"></div>
+      <div class="row" style="margin-top:9px"><span class="status" id="status"></span></div>
+      <div class="muted" id="capText" style="font-size:12.5px;margin-top:6px"></div>
     </div>
 
     <div>
       <div class="tabs">
-        <div class="tab active" data-tab="ctrl">控制</div>
+        <div class="tab active" data-tab="ctrl">对局</div>
         <div class="tab" data-tab="chat">聊天</div>
-        <div class="tab" data-tab="set">设置</div>
+        <div class="tab" data-tab="who">对手</div>
+        <div class="tab" data-tab="save">省 token</div>
+        <div class="tab" data-tab="set">主题 · 接口</div>
       </div>
+
       <div class="panel" id="tab-ctrl">
-        <div class="row" style="margin-bottom:10px">
-          <span class="muted">棋盘</span>
-          <select id="size"><option value="19" selected>19路</option><option value="13">13路</option><option value="9">9路</option></select>
-          <span class="muted">模式</span>
-          <select id="mode"><option value="ai">人机</option><option value="pvp">双人</option></select>
-          <span class="muted">你执</span>
-          <select id="side"><option value="1">黑</option><option value="2">白</option></select>
+        <div class="field"><label>棋盘</label>
+          <select id="size"><option value="19" selected>19 路</option><option value="13">13 路</option><option value="9">9 路（新手友好）</option></select>
+        </div>
+        <div class="field"><label>模式</label>
+          <select id="mode"><option value="ai">和 TA 对局</option><option value="pvp">两人轮流</option></select>
+        </div>
+        <div class="field"><label>你执</label>
+          <select id="side"><option value="1">黑（先手）</option><option value="2">白（后手）</option></select>
         </div>
         <div class="row" style="margin-bottom:12px">
-          <label class="row" style="gap:6px"><input type="checkbox" id="llmPlay"> 大模型执子（强对抗/讲解）</label>
+          <label class="row" style="gap:6px"><input type="checkbox" id="llmPlay"> 让大模型执子（更强，但较费 token）</label>
         </div>
-        <p class="muted" style="font-size:12px;margin-bottom:0">基础可玩版：含提子、打劫、数子（中国规则+贴目7.5）、停手。围棋强 AI 较难，建议开启「大模型执子」。</p>
+        <div class="panel sub">
+          <h3>着法</h3>
+          <div class="moves" id="moves"></div>
+        </div>
+        <p class="note">含提子、打劫、禁着点、中国规则数子（贴目 7.5）与停手。
+          本地围棋 AI 只是启发式，想要强对手可打开「大模型执子」；9 路上手最快。</p>
       </div>
+
       <div class="panel hidden" id="tab-chat"><div id="chatMount"></div></div>
-      <div class="panel hidden" id="tab-set"><div id="setMount"></div></div>
+      <div class="panel hidden" id="tab-who"><div id="personaMount"></div></div>
+      <div class="panel hidden" id="tab-save"><div id="budgetMount"></div></div>
+      <div class="panel hidden" id="tab-set">
+        <h3>主题</h3>
+        <div id="themeMount"></div>
+        <div class="divider"></div>
+        <h3>模型接口</h3>
+        <div id="setMount"></div>
+      </div>
     </div>
   </div>
 </div>
 
+<script src="../assets/budget.js"></script>
+<script src="../assets/persona.js"></script>
 <script src="../assets/common.js"></script>
 <script src="engine.js"></script>
 <script src="ui.js"></script>
+<script>ChessArena.bindThemeCycle(document.getElementById("themeBtn"));</script>
 </body>
 </html>

@@ -95,7 +95,10 @@
       b[m.ty][m.tx] = p; b[m.fy][m.fx] = null;
       const c = colorOf(p);
       if (m.flag === "ep") b[m.fy][m.tx] = null;
-      if (m.flag === "promo") b[m.ty][m.tx] = c === WHITE ? "Q" : "q";
+      if (m.flag === "promo") {
+        const pr = (m._promo || "Q").replace(/[^QRBNqrbn]/g, "") || "Q";
+        b[m.ty][m.tx] = c === WHITE ? pr.toUpperCase() : pr.toLowerCase();
+      }
       if (m.flag === "castleK") { b[m.fy][5] = b[m.fy][7]; b[m.fy][7] = null; }
       if (m.flag === "castleQ") { b[m.fy][3] = b[m.fy][0]; b[m.fy][0] = null; }
       this.ep = m.flag === "double" ? [m.tx, (m.fy + m.ty) / 2] : null;
@@ -106,7 +109,9 @@
     }
     revert(b, u) {
       const m = u.m, p = b[m.ty][m.tx];
-      b[m.fy][m.fx] = p; b[m.ty][m.tx] = u.cap;
+      // 升变要还原成兵，否则搜索树会把兵留成后（原 bug）
+      b[m.fy][m.fx] = m.flag === "promo" ? (colorOf(p) === WHITE ? "P" : "p") : p;
+      b[m.ty][m.tx] = u.cap;
       if (m.flag === "ep") b[m.fy][m.tx] = colorOf(p) === WHITE ? "p" : "P";
       if (m.flag === "castleK") { b[m.fy][7] = b[m.fy][5]; b[m.fy][5] = null; }
       if (m.flag === "castleQ") { b[m.fy][0] = b[m.fy][3]; b[m.fy][3] = null; }
@@ -158,11 +163,32 @@
       return best;
     }
     hint(color) { const m = this.aiMove("hard", color); if (!m) return null; return { fx: m.fx, fy: m.fy, tx: m.tx, ty: m.ty, why: "局面评估最优着法" }; }
-    contextText() {
-      let s = "国际象棋，轮到" + (this.turn === WHITE ? "白方" : "黑方") + (this.check ? "（被将军）" : "") + "。\n";
-      for (let y = 0; y < N; y++) { s += this.board[y].map((p) => p || ".").join(" ") + "\n"; }
-      return s;
+    /* ---- 紧凑局面：标准 FEN（约 70 字符，替代整盘 dump，且模型理解更准） ---- */
+    fen() {
+      let s = "";
+      for (let y = 0; y < N; y++) {
+        let empty = 0, row = "";
+        for (let x = 0; x < N; x++) {
+          const p = this.board[y][x];
+          if (!p) { empty++; continue; }
+          if (empty) { row += empty; empty = 0; }
+          row += p;
+        }
+        if (empty) row += empty;
+        s += row + (y < N - 1 ? "/" : "");
+      }
+      let c = (this.castle.wk ? "K" : "") + (this.castle.wq ? "Q" : "") + (this.castle.bk ? "k" : "") + (this.castle.bq ? "q" : "");
+      const ep = this.ep ? "abcdefgh"[this.ep[0]] + (N - this.ep[1]) : "-";
+      return s + " " + (this.turn === WHITE ? "w" : "b") + " " + (c || "-") + " " + ep;
     }
+    brief() {
+      const sq = (x, y) => "abcdefgh"[x] + (N - y);
+      const recent = this.hist.slice(-3).map((u) => u.m ? sq(u.m.fx, u.m.fy) + sq(u.m.tx, u.m.ty) : "").filter(Boolean).join(" ");
+      return `国际象棋 FEN:${this.fen()} 轮:${this.turn === WHITE ? "白" : "黑"}`
+        + `${this.check ? " 被将军!" : ""} 第${this.hist.length}手${recent ? " 近手:" + recent : ""}`;
+    }
+    full() { return this.brief(); }
+    contextText() { return this.brief(); }
   }
   global.Chess = Chess; global.CHESS = { N, WHITE, BLACK };
 })(typeof window !== "undefined" ? window : globalThis);

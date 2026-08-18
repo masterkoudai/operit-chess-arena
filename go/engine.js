@@ -118,11 +118,21 @@
       if (!m) return null;
       return { x: m[0], y: m[1], why: "按形势/气数评估的较优落点（基础启发式）。开启大模型执子可获得更强讲解。" };
     }
-    contextText() {
-      let s = `围棋 ${this.size}路，轮到${this.turn === BLACK ? "黑" : "白"}。提子：黑${this.caps[1]} 白${this.caps[2]}。${this.over ? "对局结束" : ""}\n`;
-      for (let y = 0; y < this.size; y++) s += this.board[y].map((v) => ".●○"[v]).join("") + "\n";
+    /* ---- 紧凑局面：不发 19×19 整盘（约省 350 token/次），只发着法序列 ---- */
+    brief() {
+      const cd = (m) => (m.pass ? "停手" : `(${m.x},${m.y})`);
+      const recent = this.history.slice(-6).map((m) => (m.c === BLACK ? "黑" : "白") + cd(m)).join(" ");
+      return `围棋${this.size}路 第${this.history.length}手 轮:${this.turn === BLACK ? "黑" : "白"}`
+        + ` 提子 黑吃${this.caps[1]}/白吃${this.caps[2]}${this.ko ? " 有劫" : ""}`
+        + ` 近手:${recent || "空盘"}${this.over ? " 已终局" : ""}`;
+    }
+    /* 完整盘面：只在「大模型执子」时使用 */
+    full() {
+      let s = this.brief() + "\n盘面(X黑 O白 .空, y=0 在最上, x=列):\n";
+      for (let y = 0; y < this.size; y++) s += this.board[y].map((v) => ".XO"[v]).join("") + "\n";
       return s;
     }
+    contextText() { return this.brief(); }
   }
   global.Go = Go; global.GO = { EMPTY, BLACK, WHITE };
 })(typeof window !== "undefined" ? window : globalThis);

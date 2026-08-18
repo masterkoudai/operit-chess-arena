@@ -202,12 +202,33 @@
       b[m[1]][m[0]] = b[m[3]][m[2]]; b[m[3]][m[2]] = null;
       return r;
     }
-    contextText() {
-      const cn = (p) => p ? pieceName(p) : "·";
-      let s = "中国象棋，轮到" + (this.turn === RED ? "红方" : "黑方") + (this.check ? "（被将军！）" : "") + "。\n";
-      for (let y = 0; y < H; y++) { let r = ""; for (let x = 0; x < W; x++) r += cn(this.board[y][x]); s += r + "\n"; }
-      return s;
+    /* ---- 紧凑局面：象棋 FEN（大模型原生认识，比汉字整盘省一半以上 token） ----
+     * 内部 H(马)/E(相) 输出为通用 FEN 的 N/B，黑方小写，y=0 为黑方底线。 */
+    fen() {
+      const map = { H: "N", h: "n", E: "B", e: "b" };
+      let s = "";
+      for (let y = 0; y < H; y++) {
+        let empty = 0, row = "";
+        for (let x = 0; x < W; x++) {
+          const p = this.board[y][x];
+          if (!p) { empty++; continue; }
+          if (empty) { row += empty; empty = 0; }
+          row += map[p] || p;
+        }
+        if (empty) row += empty;
+        s += row + (y < H - 1 ? "/" : "");
+      }
+      return s + " " + (this.turn === RED ? "w" : "b");
     }
+    brief() {
+      const mv = (m) => m ? `${pieceName(m.p)}(${m.x + 1},${m.y + 1})→(${m.tx + 1},${m.ty + 1})` : "";
+      const recent = this.history.slice(-3).map(mv).join(" ");
+      return `中国象棋 FEN:${this.fen()} (K帅A仕B相N马R车C炮P兵,大写红,坐标列1-9行1-10自上而下)`
+        + ` 轮:${this.turn === RED ? "红" : "黑"}${this.check ? " 被将军!" : ""}`
+        + ` 第${this.history.length}手${recent ? " 近手:" + recent : ""}`;
+    }
+    full() { return this.brief(); }
+    contextText() { return this.brief(); }
   }
   function pieceName(p) {
     const m = { K: "帅", k: "将", A: "仕", a: "士", E: "相", e: "象", H: "马", h: "馬", R: "车", r: "車", C: "炮", c: "砲", P: "兵", p: "卒" };

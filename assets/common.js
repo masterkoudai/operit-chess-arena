@@ -1,16 +1,20 @@
-/* ===== Operit 棋院 · 共享逻辑（聊天 / LLM 桥 / 教练 / 工具） ===== */
-(function (global) {
+/* ===== Operit 棋院 · 共享逻辑（聊天 / LLM 桥 / 本地教练） =====
+ * 聊天身份 = 所选角色卡（默认跟随 Operit 当前角色卡），棋院不引入额外的 AI 助手。
+ * 所有对外请求都过 Budget 预算：紧凑局面、解说节流、回复封顶、历史裁剪、缓存复用。
+ */
+(function (g) {
   "use strict";
-  const A = (global.ChessArena = global.ChessArena || {});
+  const A = (g.ChessArena = g.ChessArena || {});
+  const P = () => A.Persona;
+  const B = () => A.Budget;
 
   /* ---------- 提示条 ---------- */
   let toastTimer = null;
-  A.toast = function (msg, ms = 1800) {
+  A.toast = function (msg, ms = 1900) {
     let el = document.getElementById("__toast");
     if (!el) {
       el = document.createElement("div");
-      el.id = "__toast";
-      el.className = "toast";
+      el.id = "__toast"; el.className = "toast";
       document.body.appendChild(el);
     }
     el.textContent = msg;
@@ -19,126 +23,156 @@
     toastTimer = setTimeout(() => el.classList.remove("show"), ms);
   };
 
-  /* ---------- 设置（LLM 配置，OpenAI 兼容） ---------- */
+  /* ---------- LLM 配置（OpenAI 兼容） ---------- */
   const LS_KEY = "operit_chess_llm";
   A.loadLLMConfig = function () {
-    try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; }
-    catch (e) { return {}; }
+    try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { return {}; }
   };
   A.saveLLMConfig = function (cfg) {
-    localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+    try { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); } catch (e) {}
   };
 
-  /* ---------- LLM 调用（OpenAI 兼容 /chat/completions） ---------- */
   A.LLM = {
     cfg() { return A.loadLLMConfig(); },
-    isConfigured() {
-      const c = this.cfg();
-      return !!(c.baseUrl && c.apiKey);
-    },
-    /**
-     * messages: [{role, content}]
-     * opts: { temperature, json:bool, signal }
-     * 返回模型文本（Promise<string>）
-     */
+    isConfigured() { const c = this.cfg(); return !!(c.baseUrl && c.apiKey); },
     async complete(messages, opts = {}) {
       const c = this.cfg();
-      if (!c.baseUrl || !c.apiKey) {
-        throw new Error("未配置 AI：请在「设置」中填写 Base URL 与 API Key");
-      }
+      if (!c.baseUrl || !c.apiKey) throw new Error("未配置 AI：请在「设置」里填 Base URL 与 API Key");
       const url = c.baseUrl.replace(/\/+$/, "") + "/chat/completions";
       const body = {
         model: c.model || "gpt-4o-mini",
         messages,
-        temperature: opts.temperature != null ? opts.temperature : 0.7,
+        temperature: opts.temperature != null ? opts.temperature : 0.75,
         stream: false,
+        max_tokens: opts.maxTokens || B().maxTokens(),
       };
-      if (opts.json) body.response_format = { type: "json_object" };
       const res = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + c.apiKey,
-        },
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + c.apiKey },
         body: JSON.stringify(body),
         signal: opts.signal,
       });
       if (!res.ok) {
         const t = await res.text().catch(() => "");
-        throw new Error("AI 请求失败(" + res.status + "): " + t.slice(0, 200));
+        throw new Error("AI 请求失败(" + res.status + ")" + (t ? "：" + t.slice(0, 160) : ""));
       }
       const data = await res.json();
       return (data.choices && data.choices[0] && data.choices[0].message.content) || "";
     },
   };
 
-  /* ---------- Operit 宿主桥（在 Operit 内置浏览器中优先使用其 AI） ---------- */
+  /* ---------- Operit 宿主桥 ---------- */
   A.Operit = {
+    host() { return g.host || g.operitHost || null; },
     available() {
-      // Operit 可能在 window 上暴露 host / operitHost 等桥；这里做防御式探测
-      return !!(global.host && typeof global.host.toolCall === "function") ||
-             !!(global.operitHost);
+      const h = this.host();
+      return !!(h && (typeof h.toolCall === "function" || typeof h.complete === "function"));
     },
-    // 若 Operit 暴露了 chat/completion，优先走它；否则回落 HTTP
-    async chat(messages, opts) {
-      if (this.available() && global.host && global.host.toolCall) {
+    async chat(messages, opts = {}) {
+      const h = this.host();
+      if (h && typeof h.toolCall === "function") {
         try {
-          const r = await global.host.toolCall("llm_chat", { messages, opts });
-          if (r && r.content) return r.content;
+          const r = await h.toolCall("llm_chat", { messages, maxTokens: opts.maxTokens || B().maxTokens() });
+          const t = r && (r.content || r.text || r.message);
+          if (t) return t;
+        } catch (e) { /* 回落 */ }
+      }
+      if (h && typeof h.complete === "function") {
+        try {
+          const r = await h.complete(messages);
+          if (r) return typeof r === "string" ? r : (r.content || "");
         } catch (e) { /* 回落 */ }
       }
       return A.LLM.complete(messages, opts);
     },
   };
 
-  /* ---------- 聊天面板 ---------- */
+  A.hasAI = function () { return A.Operit.available() || A.LLM.isConfigured(); };
+
+  /* ================= 聊天面板 ================= */
   A.Chat = class {
     /**
-     * @param {HTMLElement} mount 容器
+     * @param {HTMLElement} mount
      * @param {Object} opt
-     *   systemPrompt(): string  返回系统提示
-     *   context(): string       返回当前局面文本（注入到用户消息前）
-     *   onUser(text): void       用户发消息后的钩子（可选）
+     *   game: string                棋种名（用于文案）
+     *   rules: string               最小规则说明（尽量短，会进 system prompt）
+     *   context: (mode)=>string     局面文本；mode="brief"（省）| "full"（完整棋盘）
+     *   localTip: ()=>string        本地教练一句话（跳过请求时使用）
      */
     constructor(mount, opt) {
       this.mount = mount;
       this.opt = opt || {};
-      this.logEl = null;
+      this.hist = [];           // [{role,content}] 供裁剪后回传
       this.render();
       this.greet();
+      g.addEventListener("arena:persona", () => { this.paintWho(); });
+      P().probeHost().then(() => this.paintWho());
     }
+
     render() {
-      this.mount.innerHTML = `
-        <div class="chat">
-          <div class="log" id="chatLog"></div>
-          <div class="input">
-            <textarea id="chatInput" placeholder="和 AI 聊聊这盘棋…（如：我这步怎么样？）"></textarea>
-            <button class="btn primary" id="chatSend">发送</button>
-          </div>
-        </div>`;
+      this.mount.innerHTML =
+        '<div class="chat">' +
+          '<div class="who" id="chatWho"></div>' +
+          '<div class="log" id="chatLog"></div>' +
+          '<div class="input">' +
+            '<textarea id="chatInput" placeholder="说点什么…（也可以不聊棋）"></textarea>' +
+            '<button class="btn primary" id="chatSend">发送</button>' +
+          "</div>" +
+        "</div>";
       this.logEl = this.mount.querySelector("#chatLog");
       const input = this.mount.querySelector("#chatInput");
-      const send = this.mount.querySelector("#chatSend");
-      const fire = () => this.sendFromInput();
-      send.addEventListener("click", fire);
+      this.mount.querySelector("#chatSend").addEventListener("click", () => this.sendFromInput());
       input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); fire(); }
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); this.sendFromInput(); }
       });
+      this.paintWho();
     }
+
+    paintWho() {
+      const w = this.mount.querySelector("#chatWho");
+      if (!w) return;
+      const c = P().current();
+      const nm = c.follow ? "跟随 Operit 角色卡" : c.name;
+      const tip = c.follow
+        ? (P().hostCards.length ? "当前：" + P().hostCards[0].name : "由 Operit 里正在聊的角色说话")
+        : "本地角色卡";
+      w.innerHTML = '<span class="msg ai" style="display:inline-flex"><span class="av">' + P().avatar() + "</span></span>" +
+        "<b>" + A.esc(nm) + "</b><span>· " + A.esc(tip) + "</span>";
+    }
+
     greet() {
-      this.add("ai", "我是你的 AI 棋伴。可以陪你下棋，也能随时讲解局面。试试问我：「我这步有什么问题？」或「下一步该怎么走？」");
+      const c = P().current();
+      const gr = P().greeting(this.opt.game);
+      if (gr) this.add("ai", gr);
+      else this.sys("已跟随 Operit 角色卡：这里说话的就是你正在聊的 TA，棋院不会另开一个助手。可在「对手」里更换。");
     }
+
     add(role, text, ev) {
       const d = document.createElement("div");
       d.className = "msg " + role;
-      const av = role === "user" ? "你" : "AI";
-      d.innerHTML = `<div class="av">${av}</div><div><div class="bubble"></div>${ev ? '<div class="ev"></div>' : ""}</div>`;
+      const av = role === "user" ? "你" : P().avatar();
+      d.innerHTML = '<div class="av">' + av + '</div><div><div class="bubble"></div><div class="ev"></div></div>';
       d.querySelector(".bubble").textContent = text;
-      if (ev) d.querySelector(".ev").textContent = ev;
+      const evEl = d.querySelector(".ev");
+      if (ev) evEl.innerHTML = ev; else evEl.remove();
       this.logEl.appendChild(d);
       this.logEl.scrollTop = this.logEl.scrollHeight;
       return d;
     }
+    sys(text) {
+      const d = document.createElement("div");
+      d.className = "msg sys";
+      d.innerHTML = '<div class="av" style="background:transparent;color:var(--muted);border:1px dashed var(--line)">·</div><div class="bubble"></div>';
+      d.querySelector(".bubble").textContent = text;
+      this.logEl.appendChild(d);
+      this.logEl.scrollTop = this.logEl.scrollHeight;
+      return d;
+    }
+    /* 不花 token 的本地一句话 */
+    local(text) {
+      return this.add("ai", text, '<span class="local-badge">本地 · 0 token</span>');
+    }
+
     sendFromInput() {
       const input = this.mount.querySelector("#chatInput");
       const text = input.value.trim();
@@ -151,84 +185,107 @@
       if (this.opt.onUser) this.opt.onUser(text);
       this.askAI(text);
     }
-    async askAI(userText) {
-      const thinking = this.add("ai", "思考中…");
-      const sys = (this.opt.systemPrompt && this.opt.systemPrompt()) || "你是一个友好的棋类教练。";
-      const ctx = (this.opt.context && this.opt.context()) || "";
-      const messages = [
-        { role: "system", content: sys },
-        { role: "user", content: (ctx ? "【当前局面】\n" + ctx + "\n\n" : "") + userText },
-      ];
-      try {
-        const reply = await A.Operit.chat(messages, { temperature: 0.8 });
-        thinking.querySelector(".bubble").textContent = reply.trim() || "（AI 没有回复）";
-        thinking.querySelector(".bubble").parentElement.querySelector(".ev") &&
-          (thinking.querySelector(".bubble").parentElement.querySelector(".ev").textContent = "AI · " + new Date().toLocaleTimeString());
-        this.logEl.scrollTop = this.logEl.scrollHeight;
-      } catch (e) {
-        thinking.querySelector(".bubble").textContent = "⚠️ " + e.message + "\n（未配置 AI 也能继续下棋；配置后我就能实时讲解）";
-      }
+
+    /* 组装消息：system(角色卡+规则) + 裁剪历史 + 最新局面 + 用户话 */
+    build(userText, ctxMode) {
+      const sys = P().systemPrompt(this.opt.rules || "", B().replyLimit());
+      const ctx = (this.opt.context && this.opt.context(ctxMode || (B().compact() ? "brief" : "full"))) || "";
+      const msgs = [{ role: "system", content: sys }];
+      for (const m of B().trim(this.hist)) msgs.push(m);
+      msgs.push({ role: "user", content: (ctx ? "【局面】" + ctx + "\n" : "") + userText });
+      return msgs;
     }
-    /* AI 主动解说（由对局逻辑调用，例如落子后） */
-    async narrate(promptText) {
-      const sys = (this.opt.systemPrompt && this.opt.systemPrompt()) || "你是一个简洁的棋类解说。";
-      const ctx = (this.opt.context && this.opt.context()) || "";
-      const messages = [
-        { role: "system", content: sys },
-        { role: "user", content: (ctx ? "【当前局面】\n" + ctx + "\n\n" : "") + promptText },
-      ];
+
+    async askAI(userText) {
+      if (!A.hasAI()) {
+        this.local(this.tipText() + "（还没接 AI：在「设置」填好接口，或在 Operit 内打开本页，TA 就能开口了）");
+        B().saveSkip(260);
+        return;
+      }
+      const messages = this.build(userText);
+      const key = B().keyOf(messages);
+      const hit = B().cacheGet(key);
+      if (hit) { this.add("ai", hit, '<span class="local-badge">缓存 · 0 token</span>'); B().saveSkip(); return; }
+
+      const bubble = this.add("ai", "…");
       try {
-        const reply = await A.Operit.chat(messages, { temperature: 0.7 });
-        this.add("ai", reply.trim());
-      } catch (e) { /* 静默：无网不强制解说 */ }
+        const reply = (await A.Operit.chat(messages, { temperature: 0.8 })).trim();
+        bubble.querySelector(".bubble").textContent = reply || "（没有回复）";
+        B().note(messages, reply);
+        B().cacheSet(key, reply);
+        this.hist.push({ role: "user", content: userText }, { role: "assistant", content: reply });
+        if (this.hist.length > 16) this.hist = this.hist.slice(-16);
+      } catch (e) {
+        bubble.querySelector(".bubble").textContent = "⚠️ " + e.message + "\n" + this.tipText();
+      }
+      this.logEl.scrollTop = this.logEl.scrollHeight;
+    }
+
+    /**
+     * 主动解说。kind="key" 关键时刻（将军/成三/终局…）；"routine" 普通一手。
+     * 不满足预算时改用本地教练，一分钱 token 不花。
+     */
+    async narrate(kind, promptText) {
+      if (!B().allowNarrate(kind) || !A.hasAI()) {
+        if (kind === "key" || B().cfg().narrate === "every") this.local(this.tipText());
+        B().saveSkip();
+        return;
+      }
+      const messages = this.build(promptText);
+      const key = B().keyOf(messages);
+      const hit = B().cacheGet(key);
+      if (hit) { this.add("ai", hit, '<span class="local-badge">缓存 · 0 token</span>'); B().saveSkip(); return; }
+      try {
+        const reply = (await A.Operit.chat(messages, { temperature: 0.75 })).trim();
+        if (reply) {
+          this.add("ai", reply);
+          B().note(messages, reply);
+          B().cacheSet(key, reply);
+        }
+      } catch (e) { this.local(this.tipText()); }
+    }
+
+    tipText() {
+      const t = this.opt.localTip && this.opt.localTip();
+      return t || A.Coach.tip(this.opt.game || "");
     }
   };
 
-  /* ---------- 本地教练（无 LLM 时的降级解说） ---------- */
+  /* ---------- 本地教练：无 LLM / 跳过请求时的零成本解说 ---------- */
   A.Coach = {
-    tip(evalText) {
-      const lines = [
-        "控制中心通常比边角更有价值。",
-        "先手时要主动制造「活三/活四」这类多重威胁。",
-        "防守时也别只堵，留意能否反将一军。",
-        "每一步都问自己：对手最想下哪里？先把那点看住。",
-        "把棋子连成网络，比零散分布更强。",
-      ];
-      return lines[Math.abs(hash(evalText)) % lines.length];
+    lines: [
+      "先看对手最想下哪一点，把那里守住，往往比自己往前冲更值。",
+      "子力散着容易被各个击破，先把已有的连成一片。",
+      "占先手时要制造两个威胁——对手只能挡一个。",
+      "落子前默数一遍：这步之后我怕什么？",
+      "中心比边角值钱，除非你在做局。",
+      "被逼着应招的时候，找找有没有反将的机会。",
+    ],
+    tip(seed) {
+      let h = 0; const s = String(seed) + Date.now().toString().slice(-4);
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+      return this.lines[Math.abs(h) % this.lines.length];
     },
   };
-  function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
 
-  /* ---------- 棋盘坐标工具 ---------- */
+  /* ---------- 坐标工具 ---------- */
   A.coord = {
-    toAlpha: (x) => String.fromCharCode(97 + x), // a,b,c...
-    num: (y, size) => size - y,                   // 棋盘坐标（底=1）
+    toAlpha: (x) => String.fromCharCode(97 + x),
+    num: (y, size) => size - y,
   };
 
-  /* ---------- 设置面板（注入到指定容器） ---------- */
+  /* ---------- AI 接口设置面板 ---------- */
   A.renderSettings = function (mount) {
     const c = A.loadLLMConfig();
-    mount.innerHTML = `
-      <div class="panel">
-        <h3>AI 设置（OpenAI 兼容）</h3>
-        <p class="muted" style="margin-top:0">在 Operit 内可复用其已配置模型；在 Operit 外填入你的接口。配置后 AI 即可实时讲解与「大师级」落子。</p>
-        <div class="row" style="margin-bottom:10px">
-          <label class="muted">Base URL</label>
-          <input type="text" id="setBase" style="flex:1;min-width:200px" placeholder="https://api.openai.com/v1" value="${c.baseUrl || ""}">
-        </div>
-        <div class="row" style="margin-bottom:10px">
-          <label class="muted">API Key</label>
-          <input type="password" id="setKey" style="flex:1;min-width:200px" placeholder="sk-..." value="${c.apiKey || ""}">
-        </div>
-        <div class="row" style="margin-bottom:12px">
-          <label class="muted">Model</label>
-          <input type="text" id="setModel" style="flex:1;min-width:160px" placeholder="gpt-4o-mini" value="${c.model || ""}">
-        </div>
-        <div class="row">
-          <button class="btn primary" id="setSave">保存</button>
-          <span class="tag" id="setState">${A.LLM.isConfigured() ? "已配置 ✓" : "未配置"}</span>
-        </div>
-      </div>`;
+    const inOperit = A.Operit.available();
+    mount.innerHTML =
+      '<div class="field"><label>Base URL</label><input type="text" id="setBase" placeholder="https://api.openai.com/v1" value="' + A.esc(c.baseUrl || "") + '"></div>' +
+      '<div class="field"><label>API Key</label><input type="password" id="setKey" placeholder="sk-..." value="' + A.esc(c.apiKey || "") + '"></div>' +
+      '<div class="field"><label>模型</label><input type="text" id="setModel" placeholder="gpt-4o-mini" value="' + A.esc(c.model || "") + '"></div>' +
+      '<div class="row"><button class="btn primary sm" id="setSave">保存</button>' +
+      '<span class="tag" id="setState">' + (inOperit ? "已接入 Operit 宿主 ✓" : (A.LLM.isConfigured() ? "已配置 ✓" : "未配置")) + "</span></div>" +
+      '<p class="note">在 Operit 内置浏览器里打开本页会自动走 Operit 的模型与角色卡，这里可以留空。' +
+      "在普通浏览器里才需要填自己的 OpenAI 兼容接口。密钥只存在本机浏览器。</p>";
     mount.querySelector("#setSave").addEventListener("click", () => {
       A.saveLLMConfig({
         baseUrl: mount.querySelector("#setBase").value.trim(),
@@ -236,8 +293,38 @@
         model: mount.querySelector("#setModel").value.trim(),
       });
       mount.querySelector("#setState").textContent = A.LLM.isConfigured() ? "已配置 ✓" : "未配置";
-      A.toast("AI 设置已保存");
+      A.toast("已保存");
     });
   };
 
+  /* ---------- 标签页：读 .tabs .tab[data-tab] → 切 #tab-<key> ---------- */
+  A.bindTabs = function () {
+    const tabs = Array.prototype.slice.call(document.querySelectorAll(".tabs .tab"));
+    const show = (t) => {
+      tabs.forEach((x) => {
+        x.classList.toggle("active", x === t);
+        const p = document.getElementById("tab-" + x.dataset.tab);
+        if (p) p.classList.toggle("hidden", x !== t);
+      });
+    };
+    tabs.forEach((t) => t.addEventListener("click", () => show(t)));
+    const cur = tabs.find((t) => t.classList.contains("active")) || tabs[0];
+    if (cur) show(cur);
+  };
+
+  /* ---------- 一次性挂载 对手 / 主题 / 省token / 接口 四个面板 ---------- */
+  A.mountPanels = function (opt) {
+    opt = opt || {};
+    const byId = (id) => (id ? document.getElementById(id) : null);
+    const pm = byId(opt.persona), tm = byId(opt.theme), bm = byId(opt.budget), sm = byId(opt.settings);
+    if (pm && A.Persona) A.Persona.renderPicker(pm, opt.onPersona);
+    if (tm && A.renderThemePicker) A.renderThemePicker(tm);
+    if (bm && A.Budget) A.Budget.renderPanel(bm);
+    if (sm) A.renderSettings(sm);
+  };
+
+  A.esc = A.esc || function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (m) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+  };
 })(typeof window !== "undefined" ? window : globalThis);
