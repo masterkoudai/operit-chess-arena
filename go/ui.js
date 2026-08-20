@@ -15,7 +15,7 @@
   let PAD = 24, C = 26, ctx = null;
 
   let mode = "ai", humanSide = BLACK, llmPlay = false;
-  let hintPt = null, thinking = false, snaps = [];
+  let hintPt = null, thinking = false, snaps = [], drop = null;
 
   function geom() {
     PAD = size === 9 ? 34 : size === 13 ? 28 : 24;
@@ -37,6 +37,14 @@
     } else { const m = s.match(/(\d+(?:\.\d+)?)/g); if (m && m.length >= 3) { r = +m[0]; g = +m[1]; b = +m[2]; } }
     return "rgba(" + (r | 0) + "," + (g | 0) + "," + (b | 0) + "," + a + ")";
   }
+
+  /* 落子缩放动画（克制护眼：0.5→1.0，160ms 缓出） */
+  const DUR = 160;
+  const easeOut = (k) => 1 - Math.pow(1 - k, 3);
+  function dropScale() { return drop ? 0.5 + 0.5 * easeOut(Math.min(1, (performance.now() - drop.t0) / DUR)) : 1; }
+  function dropActive() { return !!drop && (performance.now() - drop.t0) < DUR + 30; }
+  function startDrop(x, y) { drop = { x, y, t0: performance.now() }; draw(); requestAnimationFrame(stepDrop); }
+  function stepDrop() { if (dropActive()) { draw(); requestAnimationFrame(stepDrop); } else { drop = null; draw(); } }
 
   function stars(n) {
     if (n === 19) return [[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]];
@@ -91,25 +99,10 @@
     }
 
     /* 棋子 */
-    const r = C * 0.46;
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
       const v = game.board[y][x];
       if (!v) continue;
-      const cx = px(x), cy = py(y), isB = v === BLACK;
-      ctx.beginPath(); ctx.arc(cx + 0.7, cy + 1.5, r, 0, 7);
-      ctx.fillStyle = "rgba(0,0,0,.24)"; ctx.fill();
-      if (p.pixel) {
-        ctx.fillStyle = isB ? p.stoneB : p.stoneW;
-        ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-        ctx.lineWidth = 1.6; ctx.strokeStyle = alpha(p.txt, 0.55);
-        ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
-      } else {
-        const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.1, cx, cy, r);
-        if (isB) { g.addColorStop(0, "#6a6660"); g.addColorStop(0.45, p.stoneB); g.addColorStop(1, "#141310"); }
-        else { g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, p.stoneW); g.addColorStop(1, "#cfc9ba"); }
-        ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = g; ctx.fill();
-        ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.2)"; ctx.stroke();
-      }
+      stone(x, y, v, p, (drop && drop.x === x && drop.y === y) ? dropScale() : 1);
     }
     /* 上一手 */
     if (game.last && !game.last.pass) {
@@ -117,6 +110,28 @@
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(px(game.last.x), py(game.last.y), C * 0.18, 0, 7); ctx.stroke();
     }
+  }
+
+  function stone(x, y, v, p, scale) {
+    scale = scale || 1;
+    const cx = px(x), cy = py(y), r = C * 0.46, isB = v === BLACK;
+    ctx.save();
+    if (scale !== 1) { ctx.translate(cx, cy); ctx.scale(scale, scale); ctx.translate(-cx, -cy); }
+    ctx.beginPath(); ctx.arc(cx + 0.7, cy + 1.5, r, 0, 7);
+    ctx.fillStyle = "rgba(0,0,0,.24)"; ctx.fill();
+    if (p.pixel) {
+      ctx.fillStyle = isB ? p.stoneB : p.stoneW;
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      ctx.lineWidth = 1.6; ctx.strokeStyle = alpha(p.txt, 0.55);
+      ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
+    } else {
+      const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.1, cx, cy, r);
+      if (isB) { g.addColorStop(0, "#6a6660"); g.addColorStop(0.45, p.stoneB); g.addColorStop(1, "#141310"); }
+      else { g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, p.stoneW); g.addColorStop(1, "#cfc9ba"); }
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = g; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.2)"; ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /* ================= 状态 ================= */
@@ -158,7 +173,7 @@
     if (mode === "ai" && game.turn !== humanSide) return;
     snap();
     if (!game.play(x, y, game.turn)) { snaps.pop(); A.toast("这里不能下（自杀或打劫）"); return; }
-    hintPt = null; draw(); updateStatus();
+    hintPt = null; startDrop(x, y); updateStatus();
     if (game.over) { chat.narrate("key", "双方停手，对局结束已数子，说一句收尾。"); return; }
     if (game.last && game.history[game.history.length - 1].cap >= 3) {
       chat.narrate("key", "刚在 " + cd(game.last) + " 提掉了 " + game.history[game.history.length - 1].cap + " 子，说一句。");
@@ -194,6 +209,7 @@
       if (mv) game.play(mv[0], mv[1], aiColor); else game.pass(aiColor);
     }
     thinking = false; hintPt = null;
+    if (game.last && !game.last.pass) startDrop(game.last.x, game.last.y);
     draw(); updateStatus();
     if (game.over) chat.narrate("key", "对局结束，已数子，说一句。");
   }
@@ -228,7 +244,7 @@
   });
 
   function newGame() {
-    game = new Go(size); snaps = []; hintPt = null; thinking = false;
+    game = new Go(size); snaps = []; hintPt = null; thinking = false; drop = null;
     geom(); draw(); updateStatus();
   }
 
@@ -280,5 +296,6 @@
     persona: "personaMount", theme: "themeMount", budget: "budgetMount", settings: "setMount",
     onPersona: () => chat.greet(),
   });
+  window.addEventListener("arena:play", function () { const t = document.querySelector('.tabs .tab[data-tab="ctrl"]'); if (t) t.click(); });
   geom(); draw(); updateStatus();
 })();

@@ -11,6 +11,13 @@
   const el = (id) => document.getElementById(id);
 
   let mode = "ai", diff = "medium", humanSide = BLACK, llmPlay = false;
+  let drop = null;
+  const DUR = 160;
+  const easeOut = (k) => 1 - Math.pow(1 - k, 3);
+  function dropScale() { return drop ? 0.5 + 0.5 * easeOut(Math.min(1, (performance.now() - drop.t0) / DUR)) : 1; }
+  function dropActive() { return !!drop && (performance.now() - drop.t0) < DUR + 30; }
+  function startDrop(x, y) { drop = { x, y, t0: performance.now() }; draw(); requestAnimationFrame(stepDrop); }
+  function stepDrop() { if (dropActive()) { draw(); requestAnimationFrame(stepDrop); } else { drop = null; draw(); } }
   let hintPt = null, thinking = false, showForbid = true;
 
   const px = (x) => PAD + x * C, py = (y) => PAD + y * C;
@@ -77,7 +84,7 @@
     /* 棋子 */
     for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
       const v = game.board[y][x];
-      if (v !== EMPTY) stone(px(x), py(y), v === BLACK, p);
+      if (v !== EMPTY) stone(px(x), py(y), v === BLACK, p, (drop && drop.x === x && drop.y === y) ? dropScale() : 1);
     }
 
     /* 上一手 */
@@ -104,7 +111,10 @@
     }
   }
 
-  function stone(cx, cy, isBlack, p) {
+  function stone(cx, cy, isBlack, p, scale) {
+    scale = scale || 1;
+    ctx.save();
+    if (scale !== 1) { ctx.translate(cx, cy); ctx.scale(scale, scale); ctx.translate(-cx, -cy); }
     const r = C * 0.45;
     ctx.beginPath(); ctx.arc(cx + 0.8, cy + 1.6, r, 0, 7);
     ctx.fillStyle = "rgba(0,0,0,.24)"; ctx.fill();
@@ -113,13 +123,14 @@
       ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
       ctx.lineWidth = 2; ctx.strokeStyle = alpha(p.txt, 0.6);
       ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
-      return;
+    } else {
+      const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.1, cx, cy, r);
+      if (isBlack) { g.addColorStop(0, "#6a6660"); g.addColorStop(0.45, p.stoneB); g.addColorStop(1, "#141310"); }
+      else { g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, p.stoneW); g.addColorStop(1, "#cfc9ba"); }
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = g; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.22)"; ctx.stroke();
     }
-    const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.1, cx, cy, r);
-    if (isBlack) { g.addColorStop(0, "#6a6660"); g.addColorStop(0.45, p.stoneB); g.addColorStop(1, "#141310"); }
-    else { g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, p.stoneW); g.addColorStop(1, "#cfc9ba"); }
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fillStyle = g; ctx.fill();
-    ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.22)"; ctx.stroke();
+    ctx.restore();
   }
 
   /* ================= 状态 ================= */
@@ -164,7 +175,7 @@
     const th = game.threatFor(game.turn === BLACK ? WHITE : BLACK);
     game.place(x, y, game.turn);
     hintPt = null;
-    draw(); updateStatus();
+    startDrop(x, y); updateStatus();
 
     if (game.winner) { chat.narrate("key", "刚在 " + cd(game.last) + " 连成五子结束了这局，说一句。"); return; }
     if (th) chat.narrate("key", "注意：对手在 " + "abcdefghijklmno"[th.x] + (SIZE - th.y) + " 有成五威胁，提醒一句。");
@@ -194,7 +205,8 @@
     if (!done) { const m = game.aiMove(diff, aiColor); if (m) game.place(m.x, m.y, aiColor); }
 
     thinking = false; hintPt = null;
-    draw(); updateStatus();
+    if (game.last) startDrop(game.last.x, game.last.y); else draw();
+    updateStatus();
     if (game.winner) chat.narrate("key", "你输了这一局（TA 连五在 " + cd(game.last) + "），说一句安慰或得意的话。");
     else chat.narrate("routine", "你刚落在 " + cd(game.last) + "，说一句。");
   }
@@ -271,5 +283,6 @@
     persona: "personaMount", theme: "themeMount", budget: "budgetMount", settings: "setMount",
     onPersona: () => chat.greet(),
   });
+  window.addEventListener("arena:play", function () { const t = document.querySelector('.tabs .tab[data-tab="ctrl"]'); if (t) t.click(); });
   draw(); updateStatus();
 })();

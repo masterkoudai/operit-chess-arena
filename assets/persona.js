@@ -181,9 +181,14 @@
           '<button class="btn sm" id="pImp">导入 JSON</button>' +
           '<button class="btn sm ghost" id="pReset">恢复示例</button></div>' +
           '<div id="pEdit"></div>' +
+          '<div class="row" style="margin-top:12px"><button class="btn primary sm" id="pPlay">陪 TA 下一局 →</button></div>' +
           '<p class="note">聊天与解说全部由所选角色卡驱动，棋院不会另外插入一个 AI 助手。' +
           "在 Operit 内建议保持「跟随 Operit 角色卡」——说话的就是你正在聊的那个 TA。</p>";
 
+        const pPlay = mount.querySelector("#pPlay");
+        if (pPlay) pPlay.addEventListener("click", () => {
+          try { g.dispatchEvent(new CustomEvent("arena:play")); } catch (e) {}
+        });
         mount.querySelectorAll("[data-pick]").forEach((n) => n.addEventListener("click", (e) => {
           if (e.target.closest(".ops")) return;
           self.select(n.dataset.pick); paint();

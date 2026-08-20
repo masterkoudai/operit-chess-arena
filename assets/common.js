@@ -7,6 +7,7 @@
   const A = (g.ChessArena = g.ChessArena || {});
   const P = () => A.Persona;
   const B = () => A.Budget;
+  function clip1(s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n) + "…" : s; }
 
   /* ---------- 提示条 ---------- */
   let toastTimer = null;
@@ -133,11 +134,19 @@
       if (!w) return;
       const c = P().current();
       const nm = c.follow ? "跟随 Operit 角色卡" : c.name;
-      const tip = c.follow
-        ? (P().hostCards.length ? "当前：" + P().hostCards[0].name : "由 Operit 里正在聊的角色说话")
-        : "本地角色卡";
-      w.innerHTML = '<span class="msg ai" style="display:inline-flex"><span class="av">' + P().avatar() + "</span></span>" +
-        "<b>" + A.esc(nm) + "</b><span>· " + A.esc(tip) + "</span>";
+      const hostName = P().hostCards.length ? P().hostCards[0].name : "";
+      const tag = c.follow
+        ? (hostName ? "正在用「" + hostName + "」的身份和你说话" : "由你在 Operit 里正在聊的那个 TA 说话")
+        : (c.desc || c.persona || "本地角色卡 · 陪你下这一局");
+      w.innerHTML =
+        '<div class="who-card">' +
+          '<div class="face">' + P().avatar() + "</div>" +
+          '<div class="info">' +
+            '<div class="nm">' + A.esc(nm) + "</div>" +
+            '<div class="ds">' + A.esc(clip1(tag, 40)) + "</div>" +
+            '<div class="st">正在陪你下 ' + A.esc(this.opt.game || "棋") + "</div>" +
+          "</div>" +
+        "</div>";
     }
 
     greet() {

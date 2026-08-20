@@ -13,7 +13,7 @@
   const el = (id) => document.getElementById(id);
 
   let mode = "ai", diff = "medium", humanSide = RED, llmPlay = false;
-  let sel = null, targets = [], hintMv = null, thinking = false, flip = false;
+  let sel = null, targets = [], hintMv = null, thinking = false, flip = false, drop = null;
   const log = [];
 
   const colorOf = (p) => (!p ? null : p === p.toUpperCase() ? RED : BLACK);
@@ -33,6 +33,14 @@
     } else { const m = s.match(/(\d+(?:\.\d+)?)/g); if (m && m.length >= 3) { r = +m[0]; g = +m[1]; b = +m[2]; } }
     return "rgba(" + (r | 0) + "," + (g | 0) + "," + (b | 0) + "," + a + ")";
   }
+
+  /* 落子缩放动画（克制护眼：0.5→1.0，160ms 缓出） */
+  const DUR = 160;
+  const easeOut = (k) => 1 - Math.pow(1 - k, 3);
+  function dropScale() { return drop ? 0.5 + 0.5 * easeOut(Math.min(1, (performance.now() - drop.t0) / DUR)) : 1; }
+  function dropActive() { return !!drop && (performance.now() - drop.t0) < DUR + 30; }
+  function startDrop(x, y) { drop = { x, y, t0: performance.now() }; draw(); requestAnimationFrame(stepDrop); }
+  function stepDrop() { if (dropActive()) { draw(); requestAnimationFrame(stepDrop); } else { drop = null; draw(); } }
 
   /* ================= 绘制 ================= */
   function draw() {
@@ -126,7 +134,7 @@
     /* 棋子 */
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const q = game.board[y][x];
-      if (q) piece(x, y, q, p);
+      if (q) piece(x, y, q, p, (drop && drop.x === x && drop.y === y) ? dropScale() : 1);
     }
 
     /* 提示箭头 */
@@ -150,7 +158,10 @@
     ctx.beginPath(); ctx.arc(px(x), py(y), r, 0, 7); ctx.stroke();
   }
 
-  function piece(x, y, q, p) {
+  function piece(x, y, q, p, scale) {
+    scale = scale || 1;
+    ctx.save();
+    if (scale !== 1) { ctx.translate(px(x), py(y)); ctx.scale(scale, scale); ctx.translate(-px(x), -py(y)); }
     const cx = px(x), cy = py(y), r = C * 0.44, red = colorOf(q) === RED;
     const ink = red ? p.red : p.stoneB;
     /* 投影 */
@@ -173,6 +184,7 @@
     ctx.font = "bold " + Math.round(C * 0.46) + "px " + (p.pixel ? "monospace" : '"KaiTi","STKaiti","Songti SC",serif');
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(pieceName(q), cx, cy + 1);
+    ctx.restore();
   }
 
   function arrow(x1, y1, x2, y2, color) {
@@ -241,7 +253,7 @@
       const capName = game.board[y][x] ? pieceName(game.board[y][x]) : "";
       const san = notate(sel[0], sel[1], x, y);
       game.place(sel[0], sel[1], x, y);
-      log.push(san);
+      log.push(san); startDrop(x, y);
       sel = null; targets = []; hintMv = null;
       draw(); updateStatus();
       after(capName, san, true);
@@ -284,7 +296,7 @@
     if (mv) {
       capName = game.board[mv[3]][mv[2]] ? pieceName(game.board[mv[3]][mv[2]]) : "";
       san = notate(mv[0], mv[1], mv[2], mv[3]);
-      if (game.place(mv[0], mv[1], mv[2], mv[3])) log.push(san);
+      if (game.place(mv[0], mv[1], mv[2], mv[3])) { log.push(san); startDrop(mv[2], mv[3]); }
     }
     thinking = false; sel = null; targets = []; hintMv = null;
     draw(); updateStatus();
@@ -325,7 +337,7 @@
   });
 
   el("newGame").onclick = () => {
-    game.reset(); log.length = 0; sel = null; targets = []; hintMv = null; thinking = false;
+    game.reset(); log.length = 0; sel = null; targets = []; hintMv = null; thinking = false; drop = null;
     applySide(); draw(); updateStatus();
     chat.sys("新局开始，红方先行。");
     if (mode === "ai" && humanSide !== RED) setTimeout(aiTurn, 320);
@@ -365,5 +377,6 @@
     persona: "personaMount", theme: "themeMount", budget: "budgetMount", settings: "setMount",
     onPersona: () => chat.greet(),
   });
+  window.addEventListener("arena:play", function () { const t = document.querySelector('.tabs .tab[data-tab="ctrl"]'); if (t) t.click(); });
   applySide(); draw(); updateStatus();
 })();

@@ -29,6 +29,13 @@
   let pieceStyle = glyphAvailable() ? "glyph" : "disc";
   const log = [];        // 自己维护的可读着法，悔棋时 pop
   let flip = false;
+  let drop = null;                       // 落子缩放动画状态
+  const DUR = 160;
+  const easeOut = (k) => 1 - Math.pow(1 - k, 3);
+  function dropScale() { return drop ? 0.5 + 0.5 * easeOut(Math.min(1, (performance.now() - drop.t0) / DUR)) : 1; }
+  function dropActive() { return !!drop && (performance.now() - drop.t0) < DUR + 30; }
+  function startDrop(x, y) { drop = { x, y, t0: performance.now() }; draw(); requestAnimationFrame(stepDrop); }
+  function stepDrop() { if (dropActive()) { draw(); requestAnimationFrame(stepDrop); } else { drop = null; draw(); } }
 
   /* ---------- 棋子字形可用性检测（缺字库就用圆盘字母） ---------- */
   function glyphAvailable() {
@@ -105,9 +112,13 @@
       ctx.fillRect(sxL(last.tx), syT(last.ty), CELL, CELL);
     }
 
-    /* 选中格 */
+    /* 选中格：柔光 */
     if (sel) {
-      ctx.fillStyle = alpha(p.accent, 0.26);
+      const cx = cxC(sel[0]), cy = cyC(sel[1]);
+      const g = ctx.createRadialGradient(cx, cy, CELL * 0.18, cx, cy, CELL * 0.78);
+      g.addColorStop(0, alpha(p.accent, 0.34));
+      g.addColorStop(1, alpha(p.accent, 0.07));
+      ctx.fillStyle = g;
       ctx.fillRect(sxL(sel[0]), syT(sel[1]), CELL, CELL);
       ctx.lineWidth = 2;
       ctx.strokeStyle = p.accent;
@@ -163,7 +174,10 @@
     for (let y = 0; y < N; y++) {
       for (let x = 0; x < N; x++) {
         const q = game.board[y][x];
-        if (q) drawPiece(q, cxC(x), cyC(y), p);
+        if (q) {
+          const sc = (drop && drop.x === x && drop.y === y) ? dropScale() : 1;
+          drawPiece(q, cxC(x), cyC(y), p, sc);
+        }
       }
     }
 
@@ -171,7 +185,10 @@
     if (hintMv) arrow(cxC(hintMv.fx), cyC(hintMv.fy), cxC(hintMv.tx), cyC(hintMv.ty), p.accent);
   }
 
-  function drawPiece(q, cx, cy, p) {
+  function drawPiece(q, cx, cy, p, scale) {
+    scale = scale || 1;
+    ctx.save();
+    if (scale !== 1) { ctx.translate(cx, cy); ctx.scale(scale, scale); ctx.translate(-cx, -cy); }
     const isW = colorOf(q) === WHITE, t = q.toUpperCase();
     const face = isW ? p.stoneW : p.stoneB;
     const edge = isW ? "rgba(38,32,26,.78)" : "rgba(248,245,236,.55)";
@@ -187,19 +204,19 @@
       ctx.font = "700 " + Math.round(CELL * 0.42) + "px " + (p.pixel ? "monospace" : "ui-monospace, monospace");
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(LETTER[t], cx, cy + 1);
-      return;
+    } else {
+      ctx.font = Math.round(CELL * 0.76) + "px " + PIECE_FONT;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const s = SYM[t], y0 = cy + CELL * 0.02;
+      ctx.fillStyle = "rgba(0,0,0,.22)";
+      ctx.fillText(s, cx + 1.4, y0 + 2.4);
+      ctx.fillStyle = face;
+      ctx.fillText(s, cx, y0);
+      ctx.lineWidth = Math.max(1, CELL * 0.03);
+      ctx.strokeStyle = edge;
+      ctx.strokeText(s, cx, y0);
     }
-
-    ctx.font = Math.round(CELL * 0.76) + "px " + PIECE_FONT;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const s = SYM[t], y0 = cy + CELL * 0.02;
-    ctx.fillStyle = "rgba(0,0,0,.22)";
-    ctx.fillText(s, cx + 1.4, y0 + 2.4);
-    ctx.fillStyle = face;
-    ctx.fillText(s, cx, y0);
-    ctx.lineWidth = Math.max(1, CELL * 0.03);
-    ctx.strokeStyle = edge;
-    ctx.strokeText(s, cx, y0);
+    ctx.restore();
   }
 
   function arrow(x1, y1, x2, y2, color) {
@@ -293,7 +310,7 @@
     if (!game.move(fx, fy, tx, ty, promo)) return;
     log.push(san + (mv && mv.flag === "promo" ? "=" + promo : ""));
     sel = null; targets = []; hintMv = null;
-    draw(); updateStatus();
+    startDrop(tx, ty); updateStatus();
     afterMove(capName, san, true);
   }
 
@@ -348,7 +365,8 @@
     }
     thinking = false;
     sel = null; targets = []; hintMv = null;
-    draw(); updateStatus();
+    if (mv) startDrop(mv.tx, mv.ty); else draw();
+    updateStatus();
     if (san) afterMove(capName, san, false);
   }
 
@@ -386,7 +404,7 @@
   });
 
   el("newGame").onclick = () => {
-    game.reset(); log.length = 0; sel = null; targets = []; hintMv = null; thinking = false;
+    game.reset(); log.length = 0; sel = null; targets = []; hintMv = null; thinking = false; drop = null;
     applySide();
     draw(); updateStatus();
     chat.sys("新局开始，白方先行。");
@@ -437,6 +455,7 @@
     settings: "setMount",
     onPersona: () => chat.greet(),
   });
+  window.addEventListener("arena:play", function () { const t = document.querySelector('.tabs .tab[data-tab="ctrl"]'); if (t) t.click(); });
   el("styleSel").value = pieceStyle;
   applySide();
   draw();

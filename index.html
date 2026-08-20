@@ -16,30 +16,38 @@
 
 <div class="wrap">
   <div class="hero">
-    <h1>和你的 <span>AI</span> 下棋</h1>
-    <p>五子棋 · 中国象棋 · 国际象棋 · 围棋。每种棋都有教学模式、AI 对手，以及能「看棋盘说话」的实时聊天解说。</p>
+    <h1>和你的 <span>TA</span> 下棋</h1>
+    <p>四种棋，一个一直陪你下的 TA。教学模式、实时解说，和看得到整盘棋的聊天——每一步都有人陪你说话。</p>
   </div>
 
   <div class="lobby">
     <div class="card" onclick="location.href='gomoku/index.html'">
       <div class="emoji">⚫⚪</div>
       <h2>五子棋</h2>
-      <p>15×15 · 禁手规则 · 分级提示与复盘 · 完整版</p>
+      <p>15×15 · 禁手规则 · 分级提示与复盘</p>
+      <div class="cta">点开就 <b>陪TA下</b></div>
+      <div class="lv">完整版</div>
     </div>
     <div class="card" onclick="location.href='xiangqi/index.html'">
       <div class="emoji">♟️</div>
       <h2>中国象棋</h2>
-      <p>9×10 · 将军/将死 · 战术提示 · 完整版</p>
+      <p>9×10 · 将军/将死 · 战术提示</p>
+      <div class="cta">点开就 <b>陪TA下</b></div>
+      <div class="lv">完整版</div>
     </div>
     <div class="card" onclick="location.href='chess/index.html'">
       <div class="emoji">♞</div>
       <h2>国际象棋</h2>
-      <p>8×8 · 易位/吃过路/升变 · 基础可玩版</p>
+      <p>8×8 · 易位/吃过路/升变</p>
+      <div class="cta">点开就 <b>陪TA下</b></div>
+      <div class="lv">基础可玩版</div>
     </div>
     <div class="card" onclick="location.href='go/index.html'">
       <div class="emoji">⚫</div>
       <h2>围棋</h2>
-      <p>19×19 · 提子/打劫/数子 · 基础可玩版</p>
+      <p>19×19 · 提子/打劫/数子</p>
+      <div class="cta">点开就 <b>陪TA下</b></div>
+      <div class="lv">基础可玩版</div>
     </div>
   </div>
 
@@ -47,14 +55,20 @@
     <div class="panel">
       <h3>怎么用</h3>
       <ol class="muted" style="line-height:1.9">
-        <li>进入任意棋种，选择「人机对战」或「双人对战」。</li>
+        <li>进入任意棋种，在「对手」里挑一张角色卡——TA 就是和你下棋、陪你说话的那个人。</li>
         <li>点「提示」让 AI 高亮建议落点并讲解原因（教学模式）。</li>
-        <li>右侧聊天面板：随时发消息问 AI，它看得到当前局面。</li>
+        <li>右侧聊天面板：随时发消息，TA 看得到当前局面，陪你边下边聊。</li>
         <li>在「设置」填好 AI 接口后，开启「AI 执子」可让大模型亲自下，并实时解说。</li>
-        <li>在 Operit 内置浏览器打开本页，即视为已接入 Operit 的 AI。</li>
+        <li>在 Operit 内置浏览器打开本页，即视为已接入 Operit 的 AI 与角色卡。</li>
       </ol>
     </div>
     <div id="settingsMount"></div>
+  </div>
+
+  <div class="foot">
+    <div class="ln">— 棋 院 —</div>
+    <p>所有对话与解说都由你选的角色卡驱动，棋院不会另开一个 AI 助手。<br>
+    不爱某个主题？顶栏右上角随时切换；想加角色？「对手」里可新建或导入 JSON。</p>
   </div>
 </div>
 

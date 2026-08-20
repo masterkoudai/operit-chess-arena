@@ -60,13 +60,16 @@
     };
   };
 
-  /* ---------- HiDPI 画布：逻辑坐标绘制，物理像素清晰 ---------- */
+  /* ---------- HiDPI 画布：逻辑坐标绘制，物理像素清晰 ----------
+   * 显示尺寸用「width:100% + max-width:逻辑宽 + height:auto」，
+   * 这样窄屏时棋盘按容器等比缩放到不溢出，命中检测仍准（canvasXY 走 getBoundingClientRect）。 */
   A.setupCanvas = function (canvas, lw, lh) {
     const dpr = Math.min(3, g.devicePixelRatio || 1);
     canvas.width = Math.round(lw * dpr);
     canvas.height = Math.round(lh * dpr);
-    canvas.style.width = lw + "px";
-    canvas.style.height = lh + "px";
+    canvas.style.width = "100%";
+    canvas.style.maxWidth = lw + "px";
+    canvas.style.height = "auto";
     canvas.__lw = lw; canvas.__lh = lh;
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
